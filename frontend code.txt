@@ -1,0 +1,204 @@
+package medicine;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.List;
+
+public class PharmacyManagementGUI {
+    private JFrame frame;
+    private Pharmacy pharmacy;
+
+    public PharmacyManagementGUI() {
+        try {
+            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/pharmacymanagementsystem", "Megh_2612", "Pinki@1806");
+            pharmacy = new Pharmacy(connection);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error connecting to the database.", "Error", JOptionPane.ERROR_MESSAGE);
+            System.exit(1);
+        }
+
+        initialize();
+    }
+
+    private void initialize() {
+        frame = new JFrame("Pharmacy Management System");
+        frame.setBounds(100, 100, 600, 400);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.getContentPane().setLayout(new BorderLayout(0, 0));
+
+        JTabbedPane tabbedPane = new JTabbedPane(JTabbedPane.TOP);
+        frame.getContentPane().add(tabbedPane, BorderLayout.CENTER);
+
+        JPanel addMedicinePanel = createAddMedicinePanel();
+        tabbedPane.addTab("Add Medicine", null, addMedicinePanel, null);
+
+        JPanel displayMedicinesPanel = createDisplayMedicinesPanel();
+        tabbedPane.addTab("Display Medicines", null, displayMedicinesPanel, null);
+
+        JPanel sellMedicinePanel = createSellMedicinePanel();
+        tabbedPane.addTab("Sell Medicine", null, sellMedicinePanel, null);
+
+        JPanel displaySalesPanel = createDisplaySalesPanel();
+        tabbedPane.addTab("Display Sales", null, displaySalesPanel, null);
+
+        frame.setVisible(true);
+    }
+
+    private JPanel createAddMedicinePanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new GridLayout(6, 2));
+
+        JTextField medicineIdField = new JTextField();
+        JTextField medicineNameField = new JTextField();
+        JTextField quantityField = new JTextField();
+        JTextField costField = new JTextField();
+        JTextField validityField = new JTextField();
+
+        panel.add(new JLabel("Medicine ID:"));
+        panel.add(medicineIdField);
+        panel.add(new JLabel("Medicine Name:"));
+        panel.add(medicineNameField);
+        panel.add(new JLabel("Quantity:"));
+        panel.add(quantityField);
+        panel.add(new JLabel("Cost:"));
+        panel.add(costField);
+        panel.add(new JLabel("Validity (in years):"));
+        panel.add(validityField);
+
+        JButton addButton = new JButton("Add Medicine");
+        addButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                String medicineId = medicineIdField.getText();
+                String medicineName = medicineNameField.getText();
+                int quantity = Integer.parseInt(quantityField.getText());
+                double cost = Double.parseDouble(costField.getText());
+                int validity = Integer.parseInt(validityField.getText());
+
+                pharmacy.addMedicine(medicineId, medicineName, quantity, cost, validity);
+            }
+        });
+        panel.add(addButton);
+
+        return panel;
+    }
+
+    private JPanel createDisplayMedicinesPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BorderLayout());
+
+        JTextArea displayArea = new JTextArea();
+        displayArea.setEditable(false);
+
+        JScrollPane scrollPane = new JScrollPane(displayArea);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        JButton displayButton = new JButton("Display Medicines");
+        displayButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    StringBuilder medicinesList = new StringBuilder();
+                    List<Medicine> medicines = pharmacy.getMedicinesList();
+                    for (Medicine medicine : medicines) {
+                        medicinesList.append(medicine.toString()).append("\n\n");
+                    }
+                    displayArea.setText(medicinesList.toString());
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(null, "Error retrieving medicines from the database.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        panel.add(displayButton, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private JPanel createSellMedicinePanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new GridLayout(5, 2));
+
+        JTextField sellMedicineNameField = new JTextField();
+        JTextField sellQuantityField = new JTextField();
+        JTextField customerNameField = new JTextField();
+
+        panel.add(new JLabel("Medicine Name to sell:"));
+        panel.add(sellMedicineNameField);
+        panel.add(new JLabel("Quantity to sell:"));
+        panel.add(sellQuantityField);
+        panel.add(new JLabel("Customer Name:"));
+        panel.add(customerNameField);
+
+        JButton sellButton = new JButton("Sell Medicine");
+        sellButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                String medicineName = sellMedicineNameField.getText();
+                Medicine sellMedicine = pharmacy.findMedicineByName(medicineName);
+
+                if (sellMedicine != null) {
+                    int sellQuantity = Integer.parseInt(sellQuantityField.getText());
+                    String customerName = customerNameField.getText();
+                    
+                    // Sell medicine and get the total cost
+                    double totalCost = pharmacy.sellMedicine(sellMedicine, sellQuantity, customerName);
+                    
+                    // Display confirmation message with total cost
+                    JOptionPane.showMessageDialog(null, "Medicine sold successfully.\nTotal Cost: Rs" + totalCost, "Success", JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    JOptionPane.showMessageDialog(null, "Medicine not found.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        panel.add(sellButton);
+
+        return panel;
+    }
+
+    private JPanel createDisplaySalesPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BorderLayout());
+
+        JPanel inputPanel = new JPanel();
+        inputPanel.setLayout(new FlowLayout());
+
+        JTextField dateField = new JTextField(10);
+        inputPanel.add(new JLabel("Enter Date (YYYY-MM-DD):"));
+        inputPanel.add(dateField);
+
+        JButton displayButton = new JButton("Display Sales");
+        JTextArea displayArea = new JTextArea(15, 30);
+        displayArea.setEditable(false);
+        displayButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                String date = dateField.getText();
+                String salesHistory = pharmacy.getSalesHistoryByDate(date); // Corrected method call
+                displayArea.setText(salesHistory);
+            }
+        });
+
+        panel.add(inputPanel, BorderLayout.NORTH);
+        panel.add(new JScrollPane(displayArea), BorderLayout.CENTER);
+        panel.add(displayButton, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    public static void main(String[] args) {
+        try {
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    new PharmacyManagementGUI();
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error loading database driver.", "Error", JOptionPane.ERROR_MESSAGE);
+            System.exit(1);
+        }
+    }
+}

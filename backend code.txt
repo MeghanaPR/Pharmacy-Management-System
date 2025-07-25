@@ -1,0 +1,434 @@
+package medicine;
+
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.InputMismatchException;
+import java.util.List;
+import java.util.Scanner;
+
+class Medicine {
+    private String medicineId;
+    private String name;
+    private int quantity;
+    private double cost;
+    private int validityInYears;
+
+    public Medicine(String medicineId, String name, int quantity, double cost, int validityInYears) {
+        this.medicineId = medicineId;
+        this.name = name;
+        this.quantity = quantity;
+        this.cost = cost;
+        this.validityInYears = validityInYears;
+    }
+
+    public String getMedicineId() {
+        return medicineId;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getQuantity() {
+        return quantity;
+    }
+
+    public double getCost() {
+        return cost;
+    }
+
+    public int getValidityInYears() {
+        return validityInYears;
+    }
+
+    public void setQuantity(int quantity) {
+        if (quantity >= 0) {
+            this.quantity = quantity;
+        } else {
+            System.out.println("Invalid quantity. Quantity cannot be negative.");
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "Medicine ID = " + medicineId + "\n" +
+               "Medicine Name = " + name + "\n" +
+               "Quantity = " + quantity + "\n" +
+               "Cost = Rs" + cost + "\n" +
+               "Validity = " + validityInYears + " years";
+    }
+}
+class Pharmacy {
+    private ArrayList<Medicine> medicines;
+	private Connection connection;
+    private static final String SALES_FILE = "sales.txt";
+    public Pharmacy(Connection connection) {
+        this.connection = connection;
+        this.medicines = new ArrayList<>();
+    }
+    
+    public List<Medicine> getMedicinesList() throws SQLException {
+        List<Medicine> medicines = new ArrayList<>();
+        String query = "SELECT * FROM Medicine";
+
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(query)) {
+
+            while (resultSet.next()) {
+                String medicineId = resultSet.getString("Medicine_ID");
+                String medicineName = resultSet.getString("Name");
+                int quantity = resultSet.getInt("Quantity");
+                double cost = resultSet.getDouble("Cost");
+                int validity = resultSet.getInt("Validity_in_years");
+
+                Medicine medicine = new Medicine(medicineId, medicineName, quantity, cost, validity);
+                medicines.add(medicine);
+            }
+        }
+
+        return medicines;
+    }
+   
+
+    public String getSalesHistoryByDate(String date) {
+        StringBuilder stringBuilder = new StringBuilder();
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(
+                     "SELECT * FROM Sales WHERE DATE(Sale_Date) = ?")) {
+
+            preparedStatement.setString(1, date);
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            boolean salesFound = false; // Flag to track if any sales were found
+
+            while (resultSet.next()) {
+                stringBuilder.append("Medicine ID: ").append(resultSet.getString("Medicine_ID"))
+                        .append(", Quantity: ").append(resultSet.getInt("Quantity"))
+                        .append(", Customer: ").append(resultSet.getString("Customer_Name")).append("\n");
+
+                salesFound = true; // Set flag to true if sales are found
+            }
+
+            if (!salesFound) {
+                stringBuilder.append("No sales recorded for ").append(date).append(".");
+            }
+        } catch (SQLException | ClassNotFoundException e) {
+            System.out.println("Error retrieving sales history from the database.");
+            e.printStackTrace();
+        }
+        return stringBuilder.toString();
+    }
+
+
+    public void addMedicine(String medicineId, String name, int quantity, double cost, int validityInYears) {
+        try (Connection connection = getConnection()) {
+            if (medicineExists(connection, medicineId)) {
+                System.out.println("Medicine with ID " + medicineId + " already exists.");
+
+                // Prompt the user to update the quantity
+                System.out.print("Do you want to update the quantity? (yes/no): ");
+                Scanner scanner = new Scanner(System.in);
+                String updateChoice = scanner.nextLine().toLowerCase();
+
+                if (updateChoice.equals("yes")) {
+                    updateMedicineQuantity(connection, medicineId, quantity);
+                    System.out.println("Quantity updated successfully.");
+                } else {
+                    System.out.println("Quantity not updated.");
+                }
+            } else {
+                try (PreparedStatement preparedStatement = connection.prepareStatement(
+                        "INSERT INTO Medicine (Medicine_ID, Name, Quantity, Cost, Validity_in_years) VALUES (?, ?, ?, ?, ?)")) {
+
+                    preparedStatement.setString(1, medicineId);
+                    preparedStatement.setString(2, name);
+                    preparedStatement.setInt(3, quantity);
+                    preparedStatement.setDouble(4, cost);
+                    preparedStatement.setInt(5, validityInYears);
+
+                    preparedStatement.executeUpdate();
+                    System.out.println("Medicine added successfully.");
+                }
+            }
+        } catch (SQLException | ClassNotFoundException e) {
+            System.out.println("Error adding medicine to the database.");
+            e.printStackTrace();
+        }
+    }
+    private boolean medicineExists(Connection connection, String medicineId) throws SQLException {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(
+                "SELECT * FROM Medicine WHERE Medicine_ID = ?")) {
+
+            preparedStatement.setString(1, medicineId);
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            return resultSet.next();
+        }
+    }
+
+
+    private void updateMedicineQuantity(Connection connection, String medicineId, int newQuantity) throws SQLException {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(
+                "UPDATE Medicine SET Quantity = ? WHERE Medicine_ID = ?")) {
+
+            preparedStatement.setInt(1, newQuantity);
+            preparedStatement.setString(2, medicineId);
+
+            preparedStatement.executeUpdate();
+        }
+    }
+
+
+
+    public void displayMedicines() {
+        try (Connection connection = getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT * FROM Medicine")) {
+
+            System.out.println("Medicine Inventory:");
+            while (resultSet.next()) {
+                System.out.println("Medicine ID: " + resultSet.getString("Medicine_ID") +
+                                   ", Medicine Name: " + resultSet.getString("Name") +
+                                   ", Quantity: " + resultSet.getInt("Quantity") +
+                                   ", Cost: Rs" + resultSet.getDouble("Cost") +
+                                   ", Validity: " + resultSet.getInt("Validity_in_years") + " years");
+                System.out.println();
+            }
+        } catch (SQLException e) {
+            System.out.println("Error displaying medicines from the database.");
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            System.out.println("Error loading database driver.");
+            e.printStackTrace();
+        }
+    }
+    
+    Medicine findMedicineById(String medicineId) {
+        for (Medicine medicine : medicines) {
+            if (medicine.getMedicineId().equals(medicineId)) {
+                return medicine;
+            }
+        }
+        return null; // Return null if medicine with the given ID is not found
+    }
+    public Medicine findMedicineByName(String medicineName) {
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(
+                     "SELECT * FROM Medicine WHERE Name = ?")) {
+
+            preparedStatement.setString(1, medicineName);
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            if (resultSet.next()) {
+                return new Medicine(
+                        resultSet.getString("Medicine_ID"),
+                        resultSet.getString("Name"),
+                        resultSet.getInt("Quantity"),
+                        resultSet.getDouble("Cost"),
+                        resultSet.getInt("Validity_in_years")
+                );
+            }
+        } catch (SQLException e) {
+            System.out.println("Error finding medicine by name from the database.");
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            System.out.println("Error loading database driver.");
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+   
+
+
+    public double sellMedicine(Medicine medicine, int quantity, String customerName) {
+        int availableQuantity = medicine.getQuantity();
+
+        if (quantity > availableQuantity) {
+            System.out.println("Insufficient stock. Cannot sell more than available quantity.");
+            return availableQuantity;
+        }
+
+        double totalCost = quantity * medicine.getCost(); // Calculate total cost
+
+        try (Connection connection = getConnection();
+             PreparedStatement updateMedicine = connection.prepareStatement(
+                     "UPDATE Medicine SET Quantity = Quantity - ? WHERE Medicine_ID = ?");
+             PreparedStatement recordSale = connection.prepareStatement(
+                     "INSERT INTO Sales (Medicine_ID, Quantity, Cost, Customer_Name) VALUES (?, ?, ?, ?)")) {
+
+            connection.setAutoCommit(false);
+
+            updateMedicine.setInt(1, quantity);
+            updateMedicine.setString(2, medicine.getMedicineId());
+            updateMedicine.executeUpdate();
+
+            recordSale.setString(1, medicine.getMedicineId());
+            recordSale.setInt(2, quantity);
+            recordSale.setDouble(3, totalCost); // Set total cost
+            recordSale.setString(4, customerName);
+            recordSale.executeUpdate();
+
+            connection.commit();
+            connection.setAutoCommit(true);
+
+            System.out.println("Medicine sold successfully.");
+        } catch (SQLException e) {
+            System.out.println("Error selling medicine from the database.");
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            System.out.println("Error loading database driver.");
+            e.printStackTrace();
+        }
+		return totalCost;
+    }
+
+    private void recordSale(Medicine medicine, int quantity, String customerName) {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(SALES_FILE, true))) {
+            writer.println(medicine.getMedicineId() + "," + quantity + "," + customerName);
+        } catch (IOException e) {
+            System.out.println("Error recording sale to file.");
+        }
+    }
+
+
+    public void displaySales() {
+        try (Connection connection = getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT * FROM Sales")) {
+
+            System.out.println("Sales History:");
+            while (resultSet.next()) {
+                System.out.println("Medicine ID: " + resultSet.getString("Medicine_ID") +
+                        ", Quantity: " + resultSet.getInt("Quantity") +
+                        ", Customer: " + resultSet.getString("Customer_Name"));
+            }
+        } catch (SQLException e) {
+            System.out.println("Error displaying sales from the database.");
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            System.out.println("Error loading database driver.");
+            e.printStackTrace();
+        }
+    }
+
+
+    private Connection getConnection() throws SQLException, ClassNotFoundException {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            String jdbcUrl = "jdbc:mysql://localhost:3306/pharmacymanagementsystem";
+            String username = "Megh_2612";
+            String password = "Pinki@1806";
+            
+            Connection connection = DriverManager.getConnection(jdbcUrl, username, password);
+            
+            System.out.println("Connected to the database successfully!");
+            
+            return connection;
+        } catch (ClassNotFoundException | SQLException e) {
+            System.out.println("Error connecting to the database.");
+            e.printStackTrace();
+            throw e; // Rethrow the exception after logging
+        }
+    }
+    
+}
+
+public class PharmacyManagementSystem {
+    public static void main(String[] args) {
+        try (Scanner scanner = new Scanner(System.in);
+             Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/pharmacymanagementsystem", "Megh_2612", "Pinki@1806")) {
+
+            Pharmacy pharmacy = new Pharmacy(connection);
+
+            while (true) {
+                System.out.println("\nPharmacy Management System");
+                System.out.println("1. Add Medicine");
+                System.out.println("2. Display Medicines");
+                System.out.println("3. Sell Medicine");
+                System.out.println("4. Display Sales");
+                System.out.println("5. Exit");
+                System.out.print("Enter your choice: ");
+
+                int choice;
+                try {
+                    choice = scanner.nextInt();
+                    scanner.nextLine();
+                } catch (InputMismatchException e) {
+                    System.out.println("Invalid input. Please enter a valid integer for choice.");
+                    scanner.nextLine();
+                    continue;
+                }
+
+                switch (choice) {
+                    case 1:
+                        System.out.print("Enter medicine ID: ");
+                        String medicineId = scanner.nextLine();
+                        System.out.print("Enter medicine name: ");
+                        String medicineName = scanner.nextLine();
+                        System.out.print("Enter quantity: ");
+                        try {
+                            int medicineQuantity = scanner.nextInt();
+                            System.out.print("Enter cost: Rs");
+                            double medicineCost = scanner.nextDouble();
+                            System.out.print("Enter validity (in years): ");
+                            int medicineValidity = scanner.nextInt();
+                            scanner.nextLine();
+                            pharmacy.addMedicine(medicineId, medicineName, medicineQuantity, medicineCost, medicineValidity);
+                        } catch (InputMismatchException e) {
+                            System.out.println("Invalid input. Please enter valid values for quantity, cost, and validity.");
+                            scanner.nextLine();
+                        }
+                        break;
+
+                    case 2:
+                        pharmacy.displayMedicines();
+                        break;
+
+                    case 3:
+                        System.out.print("Enter Medicine Name to sell: ");
+                        String sellMedicineName = scanner.nextLine();
+                        Medicine sellMedicine = pharmacy.findMedicineByName(sellMedicineName);
+
+                        if (sellMedicine != null) {
+                            System.out.print("Enter Quantity to sell: ");
+                            try {
+                                int sellQuantity = scanner.nextInt();
+                                scanner.nextLine();
+                                System.out.print("Enter Customer Name: ");
+                                String customerName = scanner.nextLine();
+                                pharmacy.sellMedicine(sellMedicine, sellQuantity, customerName);
+                            } catch (InputMismatchException e) {
+                                System.out.println("Invalid input. Please enter valid values for quantity.");
+                                scanner.nextLine(); // Consume the invalid input
+                            }
+                        } else {
+                            System.out.println("Medicine not found.");
+                        }
+                        break;
+
+                    case 4:
+                        pharmacy.displaySales();
+                        break;
+
+                    case 5:
+                        System.out.println("Exiting the program. Goodbye!");
+                        System.exit(0);
+
+                    default:
+                        System.out.println("Invalid choice. Please enter a valid option.");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
